@@ -12,14 +12,14 @@ val attribute = FunctionalMultiValueAttribute(Element::class.java, String::class
 
 fun main(args: Array<String>) {
     val tree = SuffixArraySnapshotIndex.onAttribute(attribute)
-    testPackFor(tree)
+    testPackFor(tree)//, referenceIndex = SuffixTreeIndex.onAttribute(attribute))
 }
 
 fun testPackFor(
     index: AttributeIndex<String, Element>,
     elementToPersistCount: Int = 100_000,
-    persistedElementsUsedInTest: Int = 1_000,
-    notFoundElementsCount: Int = 1_000,
+    persistedElementsUsedInTest: Int = 10_000,
+    notFoundElementsCount: Int = 10_000,
     referenceIndex: AttributeIndex<String, Element>? = null
 ) {
     println("run for $elementToPersistCount, $index")

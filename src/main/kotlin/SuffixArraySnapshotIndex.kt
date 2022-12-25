@@ -18,7 +18,7 @@ class SuffixArray<V> private constructor(
 
     fun elementContainsSequence(str: String): Sequence<V> {
         val estimatedStreakStart = this.findLeftBound(str) + 1
-        return if (suffixArray[estimatedStreakStart].suffix.startsWith(str)) {
+        return if (suffixArray[estimatedStreakStart].startsWith(str)) {
             //found streak of at least 1
             Sequence {
                 object : Iterator<V> {
@@ -41,7 +41,7 @@ class SuffixArray<V> private constructor(
 
     fun elementEndsWithSequence(str: String): Sequence<V> {
         val leftBound = this.findLeftBound(str)
-        return if (suffixArray[leftBound + 1].suffix.contentEquals(str)) {
+        return if (suffixArray[leftBound + 1].contentEquals(str)) {
             //found streak of at least 1
             Sequence {
                 object : Iterator<V> {
@@ -61,13 +61,13 @@ class SuffixArray<V> private constructor(
      * @return index of the largest element smaller than [str]. Might return -1 if such element wasn't found
      */
     private fun findLeftBound(str: String): Int {
-        val suffix = Suffix(str, 0)
+        val suffix = SuffixAndValue<V?>(str, 0, null) as SuffixAndValue<V>
         var low = 0
         var high = suffixArray.size - 1
 
         while (low < high) {
             val mid = (low + high).ushr(1) // safe from overflows
-            val midVal = suffixArray[mid].suffix
+            val midVal = suffixArray[mid]
             val cmp = midVal.compareTo(suffix)
 
             if (cmp < 0)
@@ -75,7 +75,7 @@ class SuffixArray<V> private constructor(
             else
                 high = mid - 1
         }
-        return if (suffixArray[low].suffix.startsWith(suffix)) low - 1 else low
+        return if (suffixArray[low].startsWith(suffix)) low - 1 else low
     }
 
     companion object {
@@ -90,7 +90,7 @@ class SuffixArray<V> private constructor(
                 val strings = mapFun(v)
                 strings.forEach {
                     for (index in (it.indices)) {
-                        intermediate[outerI++] = SuffixAndValue(it.toSuffix(index), v)
+                        intermediate[outerI++] = SuffixAndValue(it, index, v)
                     }
                 }
             }
@@ -98,12 +98,12 @@ class SuffixArray<V> private constructor(
             intermediate as Array<SuffixAndValue<V>>
             val lcp = IntArray(intermediate.size)
             for (i in (1 until intermediate.size)) {
-                lcp[i] = intermediate[i - 1].suffix.commonPrefixWithLength(intermediate[i].suffix)
+                lcp[i] = intermediate[i - 1].commonPrefixWithLength(intermediate[i])
             }
             return SuffixArray(intermediate, lcp)
         }
 
-        private fun Suffix.commonPrefixWithLength(other: Suffix): Int {
+        private fun <V> SuffixAndValue<V>.commonPrefixWithLength(other: SuffixAndValue<V>): Int {
             val shortestLength = minOf(this.length, other.length)
 
             var i = 0
@@ -220,44 +220,18 @@ fun <T> Sequence<T>.toJavaIterator(): MutableIterator<T> {
 }
 
 
-class SuffixAndValue<V>(val suffix: Suffix, val value: V) : Comparable<SuffixAndValue<V>> {
-    override fun compareTo(other: SuffixAndValue<V>): Int {
-        return suffix.compareTo(other.suffix)
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as SuffixAndValue<*>
-
-        if (suffix != other.suffix) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        return suffix.hashCode()
-    }
-
-    override fun toString(): String {
-        return "[$suffix, $value]"
-    }
-}
-
-
 private fun <V> mergeSimilar(intermediate: ArrayList<SuffixAndValue<V>>): ArrayList<SuffixAndValue<ArrayList<V>>> {
     val result = ArrayList<SuffixAndValue<ArrayList<V>>>()
     var cur = 1
     var prev = 0
     while (cur <= intermediate.size) {
-        if (cur == intermediate.size || intermediate[cur].suffix != intermediate[prev].suffix) {
+        if (cur == intermediate.size || intermediate[cur] != intermediate[prev]) {
             //streak is [prev, cur - 1], let's merge
             val currArray = ArrayList<V>()
             for (i in (prev until cur)) {
                 currArray.add(intermediate[i].value)
             }
-            result.add(SuffixAndValue(intermediate[prev].suffix, currArray))
+            result.add(SuffixAndValue(intermediate[prev].str, intermediate[prev].from, currArray))
             prev = cur
         }
         cur++
@@ -265,12 +239,15 @@ private fun <V> mergeSimilar(intermediate: ArrayList<SuffixAndValue<V>>): ArrayL
     return result
 }
 
-fun String.toSuffix(index: Int): Suffix {
-    return Suffix(this, index)
-}
-
-class Suffix(private val str: String, private val from: Int) : CharSequence, Comparable<Suffix> {
-    var hashCode: Int = 0
+/**
+ * Suffix and value merged into one class for space efficiency - suffix array has a lot of them, so sparse classes
+ * (especially taking padding into account) can introduce a lot of overhead
+ */
+private class SuffixAndValue<V>(
+    val str: String,
+    val from: Int,
+    val value: V
+) : CharSequence, Comparable<SuffixAndValue<V>> {
 
     override val length: Int
         get() = str.length - from
@@ -283,12 +260,14 @@ class Suffix(private val str: String, private val from: Int) : CharSequence, Com
         return str.subSequence(startIndex + from, endIndex + from)
     }
 
+    /**
+     * NB: we're only comparing suffixes, so objects with different [value] fields might be equal
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as Suffix
-        if (hashCode != other.hashCode) return false
+        other as SuffixAndValue<*>
         if (length != other.length) return false
         for (index in indices.reversed()) {
             if (this[index] != other[index]) return false
@@ -299,21 +278,18 @@ class Suffix(private val str: String, private val from: Int) : CharSequence, Com
 
     override fun hashCode(): Int {
         //might re-calc if hashCode is 0
-        var h: Int = hashCode
-        if (h == 0) {
-            for (c in (from until str.length)) {
-                h = 31 * h + str[c].code
-            }
-            hashCode = h
+        var h: Int = 0
+        for (c in (from until str.length)) {
+            h = 31 * h + str[c].code
         }
         return h
     }
 
     override fun toString(): String {
-        return str.substring(from)
+        return "${str.substring(from)},$value"
     }
 
-    override fun compareTo(other: Suffix): Int {
+    override fun compareTo(other: SuffixAndValue<V>): Int {
         val minLength = min(length, other.length)
         for (i in (0 until minLength)) {
             val char1 = get(i)
