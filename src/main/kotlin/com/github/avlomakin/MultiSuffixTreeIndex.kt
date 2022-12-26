@@ -1,3 +1,5 @@
+package com.github.avlomakin
+
 import com.googlecode.cqengine.attribute.Attribute
 import com.googlecode.cqengine.index.Index
 import com.googlecode.cqengine.index.suffix.SuffixTreeIndex
