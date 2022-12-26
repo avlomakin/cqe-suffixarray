@@ -13,7 +13,7 @@ import kotlin.math.min
 
 class SuffixArray<V> private constructor(
     private val suffixArray: Array<SuffixAndValue<V>>,
-    private val lcp: IntArray,
+    private val longestCommonPrefix: IntArray,
 ) {
 
     fun elementContainsSequence(str: String): Sequence<V> {
@@ -29,7 +29,7 @@ class SuffixArray<V> private constructor(
                     //suffixArray[i - 1].suffix. We've checked suffixArray[i - 1] starts with str.length of the previous step ->
                     //can return the next one as well
                     override fun hasNext(): Boolean =
-                        i < suffixArray.size && (lcp[i] >= str.length || i == estimatedStreakStart)
+                        i < suffixArray.size && (longestCommonPrefix[i] >= str.length || i == estimatedStreakStart)
 
                     override fun next(): V = suffixArray[i++].value
                 }
@@ -47,7 +47,7 @@ class SuffixArray<V> private constructor(
                 object : Iterator<V> {
                     var i = leftBound
 
-                    override fun hasNext(): Boolean = i < suffixArray.size && (lcp[i] == str.length || i == leftBound)
+                    override fun hasNext(): Boolean = i < suffixArray.size && (longestCommonPrefix[i] == str.length || i == leftBound)
 
                     override fun next(): V = suffixArray[i++].value
                 }
@@ -61,7 +61,9 @@ class SuffixArray<V> private constructor(
      * @return index of the largest element smaller than [str]. Might return -1 if such element wasn't found
      */
     private fun findLeftBound(str: String): Int {
+        @Suppress("UNCHECKED_CAST")
         val suffix = SuffixAndValue<V?>(str, 0, null) as SuffixAndValue<V>
+
         var low = 0
         var high = suffixArray.size - 1
 
@@ -84,7 +86,9 @@ class SuffixArray<V> private constructor(
             mapFun: (V) -> Iterable<String>,
         ): SuffixArray<V> {
             val size = elements.sumOf { el -> mapFun(el).sumOf { it.length } }
-            val intermediate = arrayOfNulls<SuffixAndValue<V>>(size)
+
+            @Suppress("UNCHECKED_CAST")
+            val intermediate = arrayOfNulls<SuffixAndValue<V>>(size) as Array<SuffixAndValue<V>>
             var outerI = 0
             elements.forEach { v ->
                 val strings = mapFun(v)
@@ -95,7 +99,8 @@ class SuffixArray<V> private constructor(
                 }
             }
             intermediate.sort()
-            intermediate as Array<SuffixAndValue<V>>
+
+            // naive implementation of lcp (LongestCommonPrefix) - relatively fast compared to suffix array sorting
             val lcp = IntArray(intermediate.size)
             for (i in (1 until intermediate.size)) {
                 lcp[i] = intermediate[i - 1].commonPrefixWithLength(intermediate[i])
